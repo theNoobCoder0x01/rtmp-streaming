@@ -27,6 +27,11 @@ EXPOSE 8085
 
 # Copy index.html to the container
 COPY index.html /usr/local/nginx/html/index.html
+COPY 1.html /usr/local/nginx/html/1.html
+COPY 2.html /usr/local/nginx/html/2.html
+COPY 3.html /usr/local/nginx/html/3.html
+COPY 4.html /usr/local/nginx/html/4.html
+COPY 5.html /usr/local/nginx/html/5.html
 COPY index_1.html /usr/local/nginx/html/index_1.html
 COPY index_2.html /usr/local/nginx/html/index_2.html
 COPY index_3.html /usr/local/nginx/html/index_3.html
