@@ -5,6 +5,11 @@ COPY nginx.conf /etc/nginx/nginx.conf
 
 # Create the /tmp/hls directory
 RUN mkdir -p /tmp/hls && chmod -R 777 /tmp/hls
+RUN mkdir -p /tmp/hls1 && chmod -R 777 /tmp/hls1
+RUN mkdir -p /tmp/hls2 && chmod -R 777 /tmp/hls2
+RUN mkdir -p /tmp/hls3 && chmod -R 777 /tmp/hls3
+RUN mkdir -p /tmp/hls4 && chmod -R 777 /tmp/hls4
+RUN mkdir -p /tmp/hls5 && chmod -R 777 /tmp/hls5
 
 # Expose ports
 EXPOSE 1935
