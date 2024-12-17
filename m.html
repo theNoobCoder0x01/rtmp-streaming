@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stream Monitor</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background-color: #f0f2f5;
+        color: #333;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
+      .header {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+      }
+
+      h1 {
+        color: #1a73e8;
+        margin: 0;
+      }
+
+      .stats-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+        margin-bottom: 20px;
+      }
+
+      .stat-card {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .stat-title {
+        font-size: 1.1em;
+        font-weight: 600;
+        color: #5f6368;
+        margin-bottom: 10px;
+      }
+
+      .stat-value {
+        font-size: 2em;
+        font-weight: bold;
+        color: #1a73e8;
+      }
+
+      .streams-list {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .stream-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px;
+        border-bottom: 1px solid #e0e0e0;
+      }
+
+      .stream-item:last-child {
+        border-bottom: none;
+      }
+
+      .status-indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 10px;
+      }
+
+      .status-active {
+        background-color: #34a853;
+      }
+
+      .status-inactive {
+        background-color: #ea4335;
+      }
+
+      .refresh-button {
+        background-color: #1a73e8;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 1em;
+        transition: background-color 0.3s;
+      }
+
+      .refresh-button:hover {
+        background-color: #1557b0;
+      }
+
+      @media (max-width: 768px) {
+        .stats-container {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>Stream Monitor</h1>
+      </div>
+
+      <div class="stats-container">
+        <div class="stat-card">
+          <div class="stat-title">Active Streams</div>
+          <div class="stat-value" id="activeStreams">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-title">Total Bandwidth</div>
+          <div class="stat-value" id="totalBandwidth">0 Mbps</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-title">Peak Connections</div>
+          <div class="stat-value" id="peakConnections">0</div>
+        </div>
+      </div>
+
+      <div class="streams-list">
+        <h2>Active Connections</h2>
+        <div id="streamsList"></div>
+      </div>
+
+      <button class="refresh-button" onclick="refreshData()">
+        Refresh Data
+      </button>
+    </div>
+
+    <script>
+      class StreamMonitor {
+        constructor() {
+          this.streams = [];
+          this.peakConnections = 0;
+          this.wsConnection = null;
+          this.initializeWebSocket();
+        }
+
+        initializeWebSocket() {
+          // Update WebSocket URL to match our FastAPI backend
+          this.wsConnection = new WebSocket("ws://localhost:8000/ws");
+
+          this.wsConnection.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            this.handleStreamUpdate(data);
+          };
+
+          this.wsConnection.onclose = () => {
+            console.log(
+              "WebSocket connection closed. Attempting to reconnect..."
+            );
+            setTimeout(() => this.initializeWebSocket(), 5000);
+          };
+
+          this.wsConnection.onerror = (error) => {
+            console.error("WebSocket error:", error);
+          };
+        }
+
+        async fetchCurrentStreams() {
+          try {
+            // Update API endpoint to match our FastAPI backend
+            const response = await fetch("http://localhost:8000/api/streams");
+            const data = await response.json();
+            this.streams = data.streams;
+            this.updateUI();
+          } catch (error) {
+            console.error("Error fetching streams:", error);
+          }
+        }
+
+        handleStreamUpdate(data) {
+          switch (data.type) {
+            case "status_update":
+              this.streams = data.streams;
+              break;
+            case "new_stream":
+              const existingStream = this.streams.find(
+                (s) => s.id === data.stream.id
+              );
+              if (!existingStream) {
+                this.streams.push(data.stream);
+              }
+              break;
+            case "stream_ended":
+              this.streams = this.streams.filter((s) => s.id !== data.streamId);
+              break;
+          }
+          this.updateUI();
+        }
+
+        calculateStreamStats() {
+          const activeStreams = this.streams.filter(
+            (s) => s.status === "active"
+          );
+          const totalBandwidth = activeStreams.reduce((sum, stream) => {
+            return sum + stream.bandwidth;
+          }, 0);
+
+          this.peakConnections = Math.max(
+            this.peakConnections,
+            activeStreams.length
+          );
+
+          return {
+            activeCount: activeStreams.length,
+            totalBandwidth,
+            peakConnections: this.peakConnections,
+          };
+        }
+
+        updateUI() {
+          const stats = this.calculateStreamStats();
+
+          document.getElementById("activeStreams").textContent =
+            stats.activeCount;
+          document.getElementById(
+            "totalBandwidth"
+          ).textContent = `${stats.totalBandwidth.toFixed(1)} Mbps`;
+          document.getElementById("peakConnections").textContent =
+            stats.peakConnections;
+
+          const streamsListElement = document.getElementById("streamsList");
+          streamsListElement.innerHTML = "";
+
+          this.streams.forEach((stream) => {
+            const streamElement = document.createElement("div");
+            streamElement.className = "stream-item";
+            const duration = Math.floor(
+              (Date.now() - stream.start_time * 1000) / 1000
+            );
+
+            streamElement.innerHTML = `
+                        <div>
+                            <span class="status-indicator status-${
+                              stream.status
+                            }"></span>
+                            ${stream.name} (Port: ${stream.port})
+                        </div>
+                        <div>
+                            <span>${stream.bandwidth.toFixed(1)} Mbps</span>
+                            <span style="margin: 0 10px;">|</span>
+                            <span>${this.formatDuration(duration)}</span>
+                            <span style="margin: 0 10px;">|</span>
+                            <span>${stream.quality}</span>
+                        </div>
+                    `;
+            streamsListElement.appendChild(streamElement);
+          });
+        }
+
+        formatDuration(seconds) {
+          const hours = Math.floor(seconds / 3600);
+          const minutes = Math.floor((seconds % 3600) / 60);
+          const secs = Math.floor(seconds % 60);
+          return `${hours}:${minutes.toString().padStart(2, "0")}:${secs
+            .toString()
+            .padStart(2, "0")}`;
+        }
+      }
+
+      // Initialize the monitor
+      const monitor = new StreamMonitor();
+
+      // Function to manually refresh data
+      async function refreshData() {
+        await monitor.fetchCurrentStreams();
+      }
+
+      // Initial data fetch
+      refreshData();
+    </script>
+  </body>
+</html>

@@ -25,6 +25,9 @@ EXPOSE 8083
 EXPOSE 8084
 EXPOSE 8085
 
+#server
+EXPOSE 8000
+
 # Copy index.html to the container
 COPY index.html /usr/local/nginx/html/index.html
 COPY 1.html /usr/local/nginx/html/1.html
@@ -38,5 +41,18 @@ COPY index_3.html /usr/local/nginx/html/index_3.html
 COPY index_4.html /usr/local/nginx/html/index_4.html
 COPY index_5.html /usr/local/nginx/html/index_5.html
 
-CMD ["nginx", "-g", "daemon off;"]
+COPY server.py /usr/local/server.py
+COPY requirements.txt /usr/local/requirements.txt
 
+RUN apt-get update
+RUN apt-get -y install python3-pip
+
+# Create a startup script
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+# Install Python requirements during build
+RUN python3 -m pip install -r /usr/local/requirements.txt
+
+# Use the startup script as the entry point
+ENTRYPOINT ["/bin/bash", "/start.sh"]
