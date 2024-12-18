@@ -11,6 +11,7 @@ from datetime import datetime
 import logging
 import xml.etree.ElementTree as ET
 import aiohttp
+import base64
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -217,9 +218,148 @@ async def websocket_endpoint(websocket: WebSocket):
     stream_manager.connected_clients.append(websocket)
     try:
         while True:
-            await websocket.receive_text()
-    except Exception:
+            message = await websocket.receive_text()
+            data = json.loads(message)
+            
+            if data['type'] == 'select_stream':
+                stream_id = data['stream_id']
+                # Start sending video data for the selected stream
+                asyncio.create_task(send_video_stream(websocket, stream_id))
+            elif data['type'] == 'request_status':
+                # Handle status request
+                await websocket.send_json({
+                    "type": "status_update",
+                    "streams": [stream.to_dict() for stream in stream_manager.streams.values()]
+                })
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+    finally:
         stream_manager.connected_clients.remove(websocket)
+
+async def send_video_stream(websocket: WebSocket, stream_id: str):
+    try:
+        stream = stream_manager.streams.get(stream_id)
+        if not stream:
+            logger.error(f"Stream {stream_id} not found")
+            return
+
+        logger.info(f"Starting video stream for {stream.name}")
+        rtmp_url = f'rtmp://localhost:1935/live/{stream.name}'
+
+        # Check if stream exists using ffprobe
+        probe_process = await asyncio.create_subprocess_exec(
+            'ffprobe',
+            '-v', 'error',
+            '-show_entries', 'stream=codec_type',
+            '-of', 'json',
+            rtmp_url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        probe_output, probe_error = await probe_process.communicate()
+        if probe_process.returncode != 0:
+            logger.error(f"RTMP stream not found: {probe_error.decode()}")
+            return
+        
+        logger.info(f"RTMP stream found: {probe_output.decode()}")
+
+        # Modified FFmpeg command for continuous streaming
+        process = await asyncio.create_subprocess_exec(
+            'ffmpeg',
+            '-i', rtmp_url,
+            '-c:v', 'libx264',
+            '-profile:v', 'baseline',
+            '-level', '3.0',
+            '-preset', 'ultrafast',
+            '-tune', 'zerolatency',
+            '-c:a', 'aac',
+            '-ar', '44100',
+            '-b:a', '128k',
+            '-f', 'mp4',
+            '-movflags', 'frag_keyframe+empty_moov+omit_tfhd_offset+default_base_moof',
+            '-frag_duration', '1000',
+            '-min_frag_duration', '1000',
+            '-flush_packets', '1',
+            'pipe:1',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        # Create a task for handling stderr
+        async def log_stderr():
+            while True:
+                line = await process.stderr.readline()
+                if not line:
+                    break
+                logger.debug(f"FFmpeg: {line.decode().strip()}")
+
+        stderr_task = asyncio.create_task(log_stderr())
+
+        # Buffer for accumulating MP4 fragments
+        buffer = bytearray()
+        moof_start = b'moof'
+        mdat_start = b'mdat'
+        
+        while True:
+            # Read data in smaller chunks
+            chunk = await process.stdout.read(4096)
+            if not chunk:
+                logger.warning("FFmpeg process ended")
+                break
+
+            buffer.extend(chunk)
+            
+            # Look for complete fragments (moof+mdat pairs)
+            while True:
+                # Find moof box
+                moof_idx = buffer.find(moof_start)
+                if moof_idx == -1:
+                    break
+
+                # Find corresponding mdat box
+                mdat_idx = buffer.find(mdat_start, moof_idx)
+                if mdat_idx == -1:
+                    break
+
+                # Find next moof or end of buffer to determine fragment end
+                next_moof_idx = buffer.find(moof_start, mdat_idx)
+                if next_moof_idx == -1:
+                    # If no next moof, keep accumulating data
+                    break
+
+                # Extract complete fragment
+                fragment = buffer[:next_moof_idx]
+                buffer = buffer[next_moof_idx:]
+
+                # Send the fragment
+                try:
+                    await websocket.send_json({
+                        "type": "video-data",
+                        "data": base64.b64encode(fragment).decode(),
+                        "isInit": False
+                    })
+                    logger.debug(f"Sent fragment of size {len(fragment)}")
+                except Exception as e:
+                    logger.error(f"Error sending fragment: {e}")
+                    return
+
+            # Prevent buffer from growing too large
+            if len(buffer) > 10485760:  # 10MB
+                logger.warning("Buffer too large, resetting")
+                buffer = bytearray()
+
+            # Small delay to prevent overwhelming the connection
+            await asyncio.sleep(0.001)
+
+    except Exception as e:
+        logger.error(f"Error streaming video: {e}", exc_info=True)
+    finally:
+        if 'process' in locals():
+            process.terminate()
+            await process.wait()
+        if 'stderr_task' in locals():
+            stderr_task.cancel()
 
 @app.get("/api/streams")
 async def get_streams():

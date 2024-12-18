@@ -272,6 +272,38 @@
             .toString()
             .padStart(2, "0")}`;
         }
+
+        async initializeWebRTC(streamId) {
+            const pc = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' }
+                ]
+            });
+
+            // Create WebSocket connection for signaling
+            const ws = new WebSocket(`ws://${this.baseUrl}:8080/webrtc`);
+
+            ws.onmessage = async (event) => {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'offer') {
+                    await pc.setRemoteDescription(new RTCSessionDescription(msg));
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    ws.send(JSON.stringify(answer));
+                }
+            };
+
+            // Handle incoming streams
+            pc.ontrack = (event) => {
+                const video = document.createElement('video');
+                video.srcObject = event.streams[0];
+                video.autoplay = true;
+                video.playsInline = true;
+                // Add video element to your UI
+            };
+
+            return pc;
+        }
       }
 
       // Initialize the monitor

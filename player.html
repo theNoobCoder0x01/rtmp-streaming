@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HLS Video Player</title>
-    <link href="https://vjs.zencdn.net/7.11.4/video-js.css" rel="stylesheet" />
+    <title>Stream Player</title>
     <style>
         .container {
             max-width: 1200px;
@@ -14,6 +13,9 @@
         
         .stream-selector {
             margin: 20px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         
         select {
@@ -26,153 +28,457 @@
         
         .video-container {
             margin-top: 20px;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            aspect-ratio: 16/9;
+        }
+        
+        #videoElement {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
         }
         
         .stream-info {
-            margin-top: 10px;
-            padding: 10px;
+            margin-top: 20px;
+            padding: 15px;
             background-color: #f5f5f5;
-            border-radius: 4px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .stream-info h3 {
+            margin-top: 0;
+            color: #333;
         }
         
-        .refresh-button {
-            margin-left: 10px;
+        .button {
             padding: 8px 16px;
             font-size: 16px;
             border-radius: 4px;
             border: 1px solid #ccc;
-            background-color: #f8f8f8;
+            background-color: #fff;
             cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
         
-        .refresh-button:hover {
-            background-color: #e8e8e8;
+        .button:hover {
+            background-color: #f0f0f0;
+            border-color: #999;
+        }
+
+        .button.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #0056b3;
+        }
+
+        .latency-indicator {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: #eee;
+            margin-left: 10px;
+            font-size: 14px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-item {
+            background: #fff;
+            padding: 10px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        #qualityIndicator {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.9em;
+            font-weight: bold;
+            background: #28a745;
+            color: white;
+            margin-left: 10px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>HLS Video Player</h1>
+        <h1>Stream Player <span id="qualityIndicator"></span></h1>
         
         <div class="stream-selector">
             <select id="streamSelect" onchange="changeStream()">
                 <option value="">Select a stream...</option>
             </select>
-            <button onclick="refreshStreams()" class="refresh-button">
+            <button onclick="refreshStreams()" class="button">
                 <span>↻</span> Refresh
             </button>
+            <span class="latency-indicator" id="latencyIndicator">Latency: -- ms</span>
         </div>
 
         <div class="video-container">
-            <video-js id="my-video" class="video-js vjs-default-skin" controls autoplay width="640" height="360">
-                <!-- Source will be set dynamically -->
-            </video-js>
+            <video id="videoElement" autoplay playsinline></video>
         </div>
 
         <div class="stream-info" id="streamInfo">
-            <!-- Stream information will be displayed here -->
+            <h3>Stream Information</h3>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-label">Status</div>
+                    <div class="stat-value" id="streamStatus">--</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Quality</div>
+                    <div class="stat-value" id="streamQuality">--</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Bandwidth In</div>
+                    <div class="stat-value" id="bandwidthIn">--</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Bandwidth Out</div>
+                    <div class="stat-value" id="bandwidthOut">--</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Total Data In</div>
+                    <div class="stat-value" id="bytesIn">--</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Total Data Out</div>
+                    <div class="stat-value" id="bytesOut">--</div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <script src="https://vjs.zencdn.net/7.11.4/video.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/videojs-contrib-hls@5.15.0/dist/videojs-contrib-hls.min.js"></script>
-
     <script>
-        const hostname = window.location.hostname;
-        let player;
-        let activeStreams = [];
-        let ws;
-
-        // Initialize Video.js player
-        function initializePlayer() {
-            player = videojs('my-video');
-        }
-
-        // Update stream selection dropdown
-        function updateStreamList(streams) {
-            const select = document.getElementById('streamSelect');
-            const currentValue = select.value;
-            
-            // Clear existing options except the first one
-            while (select.options.length > 1) {
-                select.remove(1);
+        class StreamPlayer {
+            constructor() {
+                this.activeStreams = [];
+                this.ws = null;
+                this.currentStreamId = null;
+                this.lastUpdateTime = Date.now();
+                this.hostname = window.location.hostname;
+                this.videoElement = document.getElementById('videoElement');
+                this.mediaSource = null;
+                this.sourceBuffer = null;
+                this.queue = [];
+                this.updating = false;
+                this.isInitialized = false;
+                
+                this.initializeWebSocket();
+                this.setupVideoDebugEvents();
+                this.setupPeriodicLatencyCheck();
             }
 
-            // Add new options
-            streams.forEach(stream => {
-                if (stream.status === 'active') {
-                    const option = new Option(`Stream ${stream.name} (${stream.quality})`, stream.id);
-                    select.add(option);
-                }
-            });
-
-            // Try to maintain the current selection
-            if (currentValue) {
-                select.value = currentValue;
+            initializeWebSocket() {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${this.hostname}:8000/ws`;
+                console.log('Connecting to WebSocket:', wsUrl);
+                
+                this.ws = new WebSocket(wsUrl);
+                
+                this.ws.onopen = () => {
+                    console.log('WebSocket connected');
+                    this.refreshStreams();
+                };
+                
+                this.ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'status_update') {
+                        this.activeStreams = data.streams;
+                        this.updateStreamList();
+                        this.updateStreamInfo();
+                        this.lastUpdateTime = Date.now();
+                    } else if (data.type === 'video-data') {
+                        this.handleVideoData(data.data, data.isInit);
+                    }
+                };
+                
+                this.ws.onclose = () => {
+                    console.log('WebSocket disconnected. Attempting to reconnect...');
+                    setTimeout(() => this.initializeWebSocket(), 5000);
+                };
+                
+                this.ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                };
             }
-        }
 
-        // Change the active stream
-        function changeStream() {
-            const select = document.getElementById('streamSelect');
-            const streamId = select.value;
-            
-            if (!streamId) {
-                player.src(''); // Clear the player if no stream is selected
-                document.getElementById('streamInfo').innerHTML = '';
-                return;
-            }
+            setupVideoDebugEvents() {
+                const events = ['loadstart', 'progress', 'suspend', 'abort', 'error', 
+                    'emptied', 'stalled', 'loadedmetadata', 'loadeddata', 'canplay',
+                    'canplaythrough', 'playing', 'waiting', 'seeking', 'seeked', 'ended'];
 
-            const stream = activeStreams.find(s => s.id === streamId);
-            if (stream) {
-                player.src({
-                    src: `http://${hostname}:8080/hls/${stream.name}.m3u8`,
-                    type: 'application/x-mpegURL'
+                events.forEach(event => {
+                    this.videoElement.addEventListener(event, () => {
+                        console.log(`Video Event: ${event}`);
+                    });
                 });
-                player.play();
-
-                // Update stream info
-                document.getElementById('streamInfo').innerHTML = `
-                    <h3>Stream Information</h3>
-                    <p>Name: ${stream.name}</p>
-                    <p>Quality: ${stream.quality}</p>
-                    <p>Bandwidth In: ${stream.bandwidth_in.toFixed(2)} Mbps</p>
-                    <p>Bandwidth Out: ${stream.bandwidth_out.toFixed(2)} Mbps</p>
-                `;
             }
-        }
 
-        // WebSocket connection for stream updates
-        function initializeWebSocket() {
-            ws = new WebSocket(`ws://${hostname}:8000/ws`);
-            
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'status_update') {
-                    activeStreams = data.streams;
-                    updateStreamList(data.streams);
+            async initializeMediaSource() {
+                if (this.mediaSource) {
+                    if (this.sourceBuffer) {
+                        try {
+                            this.sourceBuffer.abort();
+                            this.mediaSource.removeSourceBuffer(this.sourceBuffer);
+                        } catch (e) {
+                            console.warn('Error cleaning up SourceBuffer:', e);
+                        }
+                    }
+                    if (this.mediaSource.readyState === 'open') {
+                        this.mediaSource.endOfStream();
+                    }
                 }
-            };
 
-            ws.onclose = () => {
-                console.log('WebSocket connection closed. Attempting to reconnect...');
-                setTimeout(initializeWebSocket, 5000);
-            };
-        }
+                return new Promise((resolve) => {
+                    this.mediaSource = new MediaSource();
+                    this.videoElement.src = URL.createObjectURL(this.mediaSource);
 
-        // Add this new function
-        function refreshStreams() {
-            // Send a message through WebSocket to request latest streams
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'request_status' }));
+                    this.mediaSource.addEventListener('sourceopen', () => {
+                        try {
+                            console.log('MediaSource opened');
+                            const mimeType = 'video/mp4; codecs="avc1.42E01E,mp4a.40.2"';
+                            console.log('Creating SourceBuffer with MIME type:', mimeType);
+                            
+                            this.sourceBuffer = this.mediaSource.addSourceBuffer(mimeType);
+                            this.sourceBuffer.mode = 'segments';
+                            this.isInitialized = true;
+
+                            this.sourceBuffer.addEventListener('updateend', () => {
+                                this.updating = false;
+                                this.processQueue();
+                            });
+
+                            this.sourceBuffer.addEventListener('error', (e) => {
+                                console.error('SourceBuffer error:', e);
+                            });
+
+                            resolve();
+                        } catch (e) {
+                            console.error('Error initializing SourceBuffer:', e);
+                            this.isInitialized = false;
+                            resolve();
+                        }
+                    }, { once: true });
+                });
+            }
+
+            async handleVideoData(data, isInit) {
+                try {
+                    if (!this.isInitialized) {
+                        console.log('Initializing MediaSource');
+                        await this.initializeMediaSource();
+                    }
+
+                    if (!this.sourceBuffer || this.mediaSource.readyState !== 'open') {
+                        console.warn('SourceBuffer not ready');
+                        return;
+                    }
+
+                    // Convert base64 to ArrayBuffer
+                    const binaryString = atob(data);
+                    const bytes = new Uint8Array(binaryString.length);
+                    for (let i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                    }
+
+                    console.log(`Received ${bytes.length} bytes${isInit ? ' (init segment)' : ''}`);
+                    this.queue.push(bytes);
+                    this.processQueue();
+
+                    // Start playback if not already playing
+                    if (this.videoElement.paused) {
+                        try {
+                            await this.videoElement.play();
+                            console.log('Playback started');
+                        } catch (e) {
+                            console.error('Error starting playback:', e);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error handling video data:', e);
+                }
+            }
+
+            processQueue() {
+                if (this.updating || !this.sourceBuffer || this.queue.length === 0) {
+                    return;
+                }
+
+                try {
+                    this.updating = true;
+                    const data = this.queue.shift();
+                    this.sourceBuffer.appendBuffer(data);
+
+                    // Log buffer state
+                    if (this.sourceBuffer.buffered.length > 0) {
+                        const start = this.sourceBuffer.buffered.start(0);
+                        const end = this.sourceBuffer.buffered.end(0);
+                        console.log(`Buffer: ${start.toFixed(2)}s to ${end.toFixed(2)}s`);
+                    }
+
+                    // Remove old data if buffer is too large
+                    if (this.sourceBuffer.buffered.length > 0) {
+                        const bufferEnd = this.sourceBuffer.buffered.end(0);
+                        const currentTime = this.videoElement.currentTime;
+                        if (bufferEnd - currentTime > 30) {
+                            this.sourceBuffer.remove(0, currentTime - 1);
+                        }
+                    }
+                } catch (e) {
+                    if (e.name === 'QuotaExceededError') {
+                        // Remove the oldest 50% of the buffer
+                        if (this.sourceBuffer.buffered.length > 0) {
+                            const start = this.sourceBuffer.buffered.start(0);
+                            const end = this.sourceBuffer.buffered.end(0);
+                            const removeEnd = start + (end - start) / 2;
+                            this.sourceBuffer.remove(start, removeEnd);
+                        }
+                    } else {
+                        console.error('Error appending buffer:', e);
+                    }
+                    this.updating = false;
+                }
+            }
+
+            updateStreamList() {
+                const select = document.getElementById('streamSelect');
+                const currentValue = select.value;
+                
+                // Keep only the first option (placeholder)
+                while (select.options.length > 1) {
+                    select.remove(1);
+                }
+
+                this.activeStreams.forEach(stream => {
+                    if (stream.status === 'active') {
+                        const option = new Option(
+                            `${stream.name} (${stream.quality})`, 
+                            stream.id
+                        );
+                        select.add(option);
+                    }
+                });
+
+                if (currentValue) {
+                    select.value = currentValue;
+                }
+            }
+
+            updateStreamInfo() {
+                if (!this.currentStreamId) return;
+
+                const stream = this.activeStreams.find(s => s.id === this.currentStreamId);
+                if (!stream) return;
+
+                // Update quality indicator
+                const qualityIndicator = document.getElementById('qualityIndicator');
+                if (qualityIndicator) {
+                    qualityIndicator.textContent = stream.quality;
+                }
+
+                // Update stats
+                const elements = {
+                    'streamStatus': stream.status,
+                    'streamQuality': stream.quality,
+                    'bandwidthIn': `${stream.bandwidth_in.toFixed(2)} Mbps`,
+                    'bandwidthOut': `${stream.bandwidth_out.toFixed(2)} Mbps`,
+                    'bytesIn': `${stream.bytes_in.toFixed(2)} MB`,
+                    'bytesOut': `${stream.bytes_out.toFixed(2)} MB`
+                };
+
+                for (const [id, value] of Object.entries(elements)) {
+                    const element = document.getElementById(id);
+                    if (element) {
+                        element.textContent = value;
+                    }
+                }
+            }
+
+            setupPeriodicLatencyCheck() {
+                setInterval(() => {
+                    const latency = Date.now() - this.lastUpdateTime;
+                    const indicator = document.getElementById('latencyIndicator');
+                    if (indicator) {
+                        indicator.textContent = `Latency: ${latency}ms`;
+                    }
+                }, 1000);
+            }
+
+            changeStream(streamId) {
+                if (!streamId) {
+                    this.currentStreamId = null;
+                    this.isInitialized = false;
+                    if (this.mediaSource && this.mediaSource.readyState === 'open') {
+                        this.mediaSource.endOfStream();
+                    }
+                    return;
+                }
+
+                const stream = this.activeStreams.find(s => s.id === streamId);
+                if (stream) {
+                    this.currentStreamId = streamId;
+                    this.isInitialized = false;
+                    this.queue = [];
+                    this.initializeMediaSource().then(() => {
+                        this.ws.send(JSON.stringify({
+                            type: 'select_stream',
+                            stream_id: streamId
+                        }));
+                        this.updateStreamInfo();
+                    });
+                }
+            }
+
+            refreshStreams() {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({ type: 'request_status' }));
+                }
             }
         }
+
+        // Global instance
+        let streamPlayer;
 
         // Initialize everything when the page loads
         document.addEventListener('DOMContentLoaded', () => {
-            initializePlayer();
-            initializeWebSocket();
+            streamPlayer = new StreamPlayer();
         });
+
+        // Global functions for HTML elements
+        function changeStream() {
+            const select = document.getElementById('streamSelect');
+            streamPlayer.changeStream(select.value);
+        }
+
+        function refreshStreams() {
+            streamPlayer.refreshStreams();
+        }
     </script>
 </body>
 </html> 
