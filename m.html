@@ -152,12 +152,12 @@
           this.streams = [];
           this.peakConnections = 0;
           this.wsConnection = null;
+          this.baseUrl = window.location.hostname;
           this.initializeWebSocket();
         }
 
         initializeWebSocket() {
-          // Update WebSocket URL to match our FastAPI backend
-          this.wsConnection = new WebSocket("ws://localhost:8000/ws");
+          this.wsConnection = new WebSocket(`ws://${this.baseUrl}:8000/ws`);
 
           this.wsConnection.onmessage = (event) => {
             const data = JSON.parse(event.data);
@@ -178,8 +178,7 @@
 
         async fetchCurrentStreams() {
           try {
-            // Update API endpoint to match our FastAPI backend
-            const response = await fetch("http://localhost:8000/api/streams");
+            const response = await fetch(`http://${this.baseUrl}:8000/api/streams`);
             const data = await response.json();
             this.streams = data.streams;
             this.updateUI();
@@ -209,12 +208,11 @@
         }
 
         calculateStreamStats() {
-          const activeStreams = this.streams.filter(
-            (s) => s.status === "active"
-          );
-          const totalBandwidth = activeStreams.reduce((sum, stream) => {
-            return sum + stream.bandwidth;
-          }, 0);
+          const activeStreams = this.streams.filter((s) => s.status === "active");
+          const totalBandwidthIn = activeStreams.reduce((sum, stream) => sum + stream.bandwidth_in, 0);
+          const totalBandwidthOut = activeStreams.reduce((sum, stream) => sum + stream.bandwidth_out, 0);
+          const totalBytesIn = activeStreams.reduce((sum, stream) => sum + stream.bytes_in, 0);
+          const totalBytesOut = activeStreams.reduce((sum, stream) => sum + stream.bytes_out, 0);
 
           this.peakConnections = Math.max(
             this.peakConnections,
@@ -223,7 +221,10 @@
 
           return {
             activeCount: activeStreams.length,
-            totalBandwidth,
+            totalBandwidthIn,
+            totalBandwidthOut,
+            totalBytesIn,
+            totalBytesOut,
             peakConnections: this.peakConnections,
           };
         }
@@ -231,39 +232,34 @@
         updateUI() {
           const stats = this.calculateStreamStats();
 
-          document.getElementById("activeStreams").textContent =
-            stats.activeCount;
-          document.getElementById(
-            "totalBandwidth"
-          ).textContent = `${stats.totalBandwidth.toFixed(1)} Mbps`;
-          document.getElementById("peakConnections").textContent =
-            stats.peakConnections;
+          document.getElementById("activeStreams").textContent = stats.activeCount;
+          document.getElementById("totalBandwidth").innerHTML = 
+            `In: ${stats.totalBandwidthIn.toFixed(1)} Mbps (${stats.totalBytesIn.toFixed(1)} MB)<br>
+             Out: ${stats.totalBandwidthOut.toFixed(1)} Mbps (${stats.totalBytesOut.toFixed(1)} MB)`;
+          document.getElementById("peakConnections").textContent = stats.peakConnections;
 
+          // Update the stream items display to include bytes transferred
           const streamsListElement = document.getElementById("streamsList");
           streamsListElement.innerHTML = "";
 
           this.streams.forEach((stream) => {
             const streamElement = document.createElement("div");
             streamElement.className = "stream-item";
-            const duration = Math.floor(
-              (Date.now() - stream.start_time * 1000) / 1000
-            );
+            const duration = Math.floor((Date.now() - stream.start_time * 1000) / 1000);
 
             streamElement.innerHTML = `
-                        <div>
-                            <span class="status-indicator status-${
-                              stream.status
-                            }"></span>
-                            ${stream.name} (Port: ${stream.port})
-                        </div>
-                        <div>
-                            <span>${stream.bandwidth.toFixed(1)} Mbps</span>
-                            <span style="margin: 0 10px;">|</span>
-                            <span>${this.formatDuration(duration)}</span>
-                            <span style="margin: 0 10px;">|</span>
-                            <span>${stream.quality}</span>
-                        </div>
-                    `;
+              <div>
+                <span class="status-indicator status-${stream.status}"></span>
+                ${stream.name} (Port: ${stream.port})
+              </div>
+              <div>
+                <span>${stream.bandwidth_in.toFixed(1)} Mbps (${stream.bytes_in.toFixed(1)} MB)</span>
+                <span style="margin: 0 10px;">|</span>
+                <span>${this.formatDuration(duration)}</span>
+                <span style="margin: 0 10px;">|</span>
+                <span>${stream.quality}</span>
+              </div>
+            `;
             streamsListElement.appendChild(streamElement);
           });
         }

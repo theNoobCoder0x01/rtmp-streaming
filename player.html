@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HLS Video Player</title>
+    <link href="https://vjs.zencdn.net/7.11.4/video-js.css" rel="stylesheet" />
+    <style>
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .stream-selector {
+            margin: 20px 0;
+        }
+        
+        select {
+            padding: 8px;
+            font-size: 16px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            min-width: 200px;
+        }
+        
+        .video-container {
+            margin-top: 20px;
+        }
+        
+        .stream-info {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+        }
+        
+        .refresh-button {
+            margin-left: 10px;
+            padding: 8px 16px;
+            font-size: 16px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background-color: #f8f8f8;
+            cursor: pointer;
+        }
+        
+        .refresh-button:hover {
+            background-color: #e8e8e8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>HLS Video Player</h1>
+        
+        <div class="stream-selector">
+            <select id="streamSelect" onchange="changeStream()">
+                <option value="">Select a stream...</option>
+            </select>
+            <button onclick="refreshStreams()" class="refresh-button">
+                <span>↻</span> Refresh
+            </button>
+        </div>
+
+        <div class="video-container">
+            <video-js id="my-video" class="video-js vjs-default-skin" controls autoplay width="640" height="360">
+                <!-- Source will be set dynamically -->
+            </video-js>
+        </div>
+
+        <div class="stream-info" id="streamInfo">
+            <!-- Stream information will be displayed here -->
+        </div>
+    </div>
+
+    <script src="https://vjs.zencdn.net/7.11.4/video.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/videojs-contrib-hls@5.15.0/dist/videojs-contrib-hls.min.js"></script>
+
+    <script>
+        const hostname = window.location.hostname;
+        let player;
+        let activeStreams = [];
+        let ws;
+
+        // Initialize Video.js player
+        function initializePlayer() {
+            player = videojs('my-video');
+        }
+
+        // Update stream selection dropdown
+        function updateStreamList(streams) {
+            const select = document.getElementById('streamSelect');
+            const currentValue = select.value;
+            
+            // Clear existing options except the first one
+            while (select.options.length > 1) {
+                select.remove(1);
+            }
+
+            // Add new options
+            streams.forEach(stream => {
+                if (stream.status === 'active') {
+                    const option = new Option(`Stream ${stream.name} (${stream.quality})`, stream.id);
+                    select.add(option);
+                }
+            });
+
+            // Try to maintain the current selection
+            if (currentValue) {
+                select.value = currentValue;
+            }
+        }
+
+        // Change the active stream
+        function changeStream() {
+            const select = document.getElementById('streamSelect');
+            const streamId = select.value;
+            
+            if (!streamId) {
+                player.src(''); // Clear the player if no stream is selected
+                document.getElementById('streamInfo').innerHTML = '';
+                return;
+            }
+
+            const stream = activeStreams.find(s => s.id === streamId);
+            if (stream) {
+                player.src({
+                    src: `http://${hostname}:8080/hls/${stream.name}.m3u8`,
+                    type: 'application/x-mpegURL'
+                });
+                player.play();
+
+                // Update stream info
+                document.getElementById('streamInfo').innerHTML = `
+                    <h3>Stream Information</h3>
+                    <p>Name: ${stream.name}</p>
+                    <p>Quality: ${stream.quality}</p>
+                    <p>Bandwidth In: ${stream.bandwidth_in.toFixed(2)} Mbps</p>
+                    <p>Bandwidth Out: ${stream.bandwidth_out.toFixed(2)} Mbps</p>
+                `;
+            }
+        }
+
+        // WebSocket connection for stream updates
+        function initializeWebSocket() {
+            ws = new WebSocket(`ws://${hostname}:8000/ws`);
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'status_update') {
+                    activeStreams = data.streams;
+                    updateStreamList(data.streams);
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket connection closed. Attempting to reconnect...');
+                setTimeout(initializeWebSocket, 5000);
+            };
+        }
+
+        // Add this new function
+        function refreshStreams() {
+            // Send a message through WebSocket to request latest streams
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'request_status' }));
+            }
+        }
+
+        // Initialize everything when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            initializePlayer();
+            initializeWebSocket();
+        });
+    </script>
+</body>
+</html> 
