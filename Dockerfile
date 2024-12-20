@@ -20,6 +20,7 @@ EXPOSE 1935-1940 8080-8085 8000
 
 # Copy application files
 COPY *.html /usr/local/nginx/html/
+COPY public/ /usr/local/nginx/html/public/
 # COPY player.html /usr/local/nginx/html/
 COPY server.py /usr/local/
 COPY start.sh /start.sh
