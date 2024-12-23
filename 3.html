@@ -5,21 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HLS Video Player</title>
     <!-- Include Video.js CSS -->
-    <link href="https://vjs.zencdn.net/7.11.4/video-js.css" rel="stylesheet" />
+    <link href="public/video-js.css" rel="stylesheet" />
 </head>
 <body>
     <h1>HLS Video Player</h1>
     <!-- Video.js video player -->
     <video-js id="my-video" class="video-js vjs-default-skin" controls autoplay width="640" height="360">
-        <source src="http://192.168.8.17:8080/hls/3.m3u8" type="application/x-mpegURL" />
+        <source id="videoSource" type="application/x-mpegURL" />
     </video-js>
 
-    <!-- Include Video.js and Video.js HLS support -->
-    <script src="https://vjs.zencdn.net/7.11.4/video.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/videojs-contrib-hls@5.15.0/dist/videojs-contrib-hls.min.js"></script>
+    <!-- Local video.js files -->
+    <script src="public/video.min.js"></script>
+    <script src="public/videojs-contrib-hls.min.js"></script>
 
-    <!-- Initialize Video.js player -->
+    <!-- Initialize Video.js player with dynamic IP -->
     <script>
+        // Get the current hostname dynamically
+        const hostname = window.location.hostname;
+        // Update video source with current hostname
+        document.getElementById('videoSource').src = `http://${hostname}:8080/hls/3.m3u8`;
+        
         var player = videojs('my-video');
         player.play();
     </script>
