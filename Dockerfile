@@ -1,7 +1,9 @@
 FROM tiangolo/nginx-rtmp
 
 # Install system dependencies first
-RUN apt-get update && apt-get -y install python3-pip \
+RUN sed -i 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
+    printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99no-check-valid-until && \
+    apt-get update && apt-get -y install python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only requirements.txt first to leverage Docker cache
