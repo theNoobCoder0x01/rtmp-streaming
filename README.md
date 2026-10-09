@@ -2,6 +2,15 @@
 Streaming to a local network from OBS using NGINX-RTMP
 
 ```
-docker build . -t streaming
-docker run --name streaming -p 1935:1935 -p 8080:8080 -p 8000:8000 streaming
+docker compose up --build -d
+```
+
+Use `rtmp://<host-ip>:1935/live` as the OBS server URL and your stream key as
+the stream name. The web player and HLS output are available on port `8080`.
+The API is exposed on port `8000`.
+
+Stop the service with:
+
+```
+docker compose down
 ```

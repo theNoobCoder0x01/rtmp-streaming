@@ -1,0 +1,10 @@
+services:
+  streaming:
+    build:
+      context: .
+    container_name: streaming
+    ports:
+      - "1935:1935"
+      - "8080:8080"
+      - "8000:8000"
+    restart: unless-stopped
