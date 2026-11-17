@@ -18,7 +18,7 @@ RUN mkdir -p /tmp/hls{,1,2,3,4,5} && \
     chmod -R 777 /tmp/hls{,1,2,3,4,5}
 
 # Expose ports
-EXPOSE 1935-1940 8080-8085 8000
+EXPOSE 1935-1940 8080-8085
 
 # Copy application files
 COPY *.html /usr/local/nginx/html/

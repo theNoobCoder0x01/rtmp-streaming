@@ -157,7 +157,7 @@
         }
 
         initializeWebSocket() {
-          this.wsConnection = new WebSocket(`ws://${this.baseUrl}:8000/ws`);
+          this.wsConnection = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
 
           this.wsConnection.onmessage = (event) => {
             const data = JSON.parse(event.data);
@@ -178,7 +178,7 @@
 
         async fetchCurrentStreams() {
           try {
-            const response = await fetch(`http://${this.baseUrl}:8000/api/streams`);
+            const response = await fetch(`/api/streams`);
             const data = await response.json();
             this.streams = data.streams;
             this.updateUI();
