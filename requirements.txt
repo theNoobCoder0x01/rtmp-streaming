@@ -2,3 +2,4 @@ uvicorn[standard]
 fastapi
 aiofiles
 aiohttp==3.8.5
+passlib==1.7.4

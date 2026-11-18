@@ -23,7 +23,7 @@
         // Get the current hostname dynamically
         const hostname = window.location.hostname;
         const videoSource = document.getElementById('videoSource');
-        videoSource.src = `http://${hostname}:8080/hls/test.m3u8`;
+        videoSource.src = `/hls/test.m3u8`;
         
         var player = videojs('my-video');
         player.play();

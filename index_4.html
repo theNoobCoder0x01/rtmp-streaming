@@ -22,7 +22,7 @@
     <script>
         // Get current hostname dynamically
         const hostname = window.location.hostname;
-        document.getElementById('videoSource').src = `http://${hostname}:8080/hls/stream4.m3u8`;
+        document.getElementById('videoSource').src = `/hls/stream4.m3u8`;
         
         var player = videojs('my-video');
         player.play();

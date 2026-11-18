@@ -126,7 +126,7 @@
             const stream = activeStreams.find(s => s.id === streamId);
             if (stream) {
                 player.src({
-                    src: `http://${hostname}:8080/hls/${stream.name}.m3u8`,
+                    src: `/hls/${stream.name}.m3u8`,
                     type: 'application/x-mpegURL'
                 });
                 player.play();

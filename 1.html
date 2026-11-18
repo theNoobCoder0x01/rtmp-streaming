@@ -26,7 +26,7 @@
         // Initialize Video.js player with dynamic URL
         var player = videojs('my-video');
         player.src({
-            src: `http://${hostname}:8080/hls/1.m3u8`,
+            src: `/hls/1.m3u8`,
             type: 'application/x-mpegURL'
         });
         player.play();

@@ -19,7 +19,7 @@
 
     <script>
         const hostname = window.location.hostname;
-        document.getElementById('hlsSource').src = `http://${hostname}:8081/hls/stream1.m3u8`;
+        document.getElementById('hlsSource').src = `/hls/stream1.m3u8`;
         
         var player = videojs('my-video');
         player.play();

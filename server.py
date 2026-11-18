@@ -1,5 +1,5 @@
 from fastapi import FastAPI, WebSocket
-from fastapi.middleware.cors import CORSMiddleware
+from viewer_auth import COOKIE_NAME, ViewerAuth
 import asyncio
 import os
 import time
@@ -16,16 +16,8 @@ import aiohttp
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
-
-# Enable CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+viewer_auth = ViewerAuth()
 
 @dataclass
 class Stream:
@@ -47,7 +39,7 @@ class StreamManager:
     def __init__(self):
         self.streams: Dict[str, Stream] = {}
         self.connected_clients: List[WebSocket] = []
-        self.stat_url = "http://localhost:8080/stat"
+        self.stat_url = "http://127.0.0.1:8090/stat"
 
     async def fetch_rtmp_stats(self):
         try:
@@ -201,9 +193,15 @@ class StreamManager:
         
         for client in self.connected_clients[:]:
             try:
+                if not viewer_auth.is_authenticated(client.cookies.get(COOKIE_NAME)):
+                    await client.close(code=1008)
+                    if client in self.connected_clients:
+                        self.connected_clients.remove(client)
+                    continue
                 await client.send_json(update_data)
             except Exception:
-                self.connected_clients.remove(client)
+                if client in self.connected_clients:
+                    self.connected_clients.remove(client)
 
 stream_manager = StreamManager()
 
@@ -213,13 +211,27 @@ async def startup_event():
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    token = websocket.cookies.get(COOKIE_NAME)
+    origin = websocket.headers.get("origin")
+    scheme = "https" if websocket.url.scheme == "wss" else "http"
+    if (not viewer_auth.is_authenticated(token)
+            or (origin and origin != "{}://{}".format(scheme, websocket.headers["host"]))):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     stream_manager.connected_clients.append(websocket)
     try:
-        while True:
-            await websocket.receive_text()
+        while viewer_auth.is_authenticated(token):
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=1)
+            except asyncio.TimeoutError:
+                pass
+        await websocket.close(code=1008)
     except Exception:
-        stream_manager.connected_clients.remove(websocket)
+        pass
+    finally:
+        if websocket in stream_manager.connected_clients:
+            stream_manager.connected_clients.remove(websocket)
 
 @app.get("/api/streams")
 async def get_streams():
@@ -245,6 +257,8 @@ async def debug_rtmp_stats():
         return xml_to_dict(stats)
     return {"error": "Could not fetch RTMP stats"}
 
+viewer_auth.install(app)
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)  # reached via nginx on 8080 (behind the login)
+    uvicorn.run(app, host="127.0.0.1", port=8000)  # reached via nginx on 8080
