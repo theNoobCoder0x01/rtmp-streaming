@@ -1,10 +1,11 @@
 # rtmp-streaming
-Streaming to a local network from OBS using NGINX-RTMP, with a password on
-both sides:
+Streaming to a local network from OBS using NGINX-RTMP, with a password for
+browser viewers:
 
-- **Streaming (OBS):** the stream key must be `<name>?pwd=<STREAM_KEY>`, otherwise the stream is refused.
+- **Streaming (OBS):** use the existing stream name as the stream key (for example `test`). No publishing password is required.
 - **Watching (browser):** the player pages, HLS video, dashboard, API and
   WebSocket on port `8080` all ask for a username and password.
+- **Watching (direct RTMP):** playback on port `1935` remains enabled without authentication.
 
 Passwords are **not** stored in the image. The container reads them from
 environment variables when it starts, so the same image works on any server.
@@ -16,7 +17,6 @@ environment variables when it starts, so the same image works on any server.
    cp stream.env.example stream.env
    ```
    ```
-   STREAM_KEY=<long random value, e.g. from: openssl rand -hex 24>
    VIEWER_USER=viewer
    VIEWER_PASSWORD=<viewer password>
    ```
@@ -27,10 +27,11 @@ environment variables when it starts, so the same image works on any server.
    docker compose up --build -d
    ```
    If `stream.env` is missing or incomplete, the container stops with a
-   message saying what's missing. It never starts unprotected.
+   message saying what's missing. Browser access always requires the viewer login.
 
 3. In OBS, use `rtmp://<host-ip>:1935/live` as the server and
-   `<name>?pwd=<STREAM_KEY>` as the stream key (for example `test?pwd=...`).
+   your existing stream name as the stream key (for example `test`, without a
+   `?pwd=...` suffix).
 
 4. Open `http://<host-ip>:8080/` (or `/m.html`, `/player.html`) and log in.
 
@@ -47,7 +48,6 @@ docker compose down
 
 | Variable | Required | Meaning |
 |---|---|---|
-| `STREAM_KEY` | yes | OBS stream password. Letters, digits, `-` and `_` only. |
 | `VIEWER_PASSWORD` | yes* | Browser password. Hashed when the container starts. |
 | `VIEWER_PASSWORD_HASH` | yes* | Use instead of `VIEWER_PASSWORD` to avoid keeping the plain password on the server (create with `openssl passwd -6`). |
 | `VIEWER_USER` | no | Browser username, default `viewer`. |
@@ -59,12 +59,16 @@ folder and mount it at `/etc/nginx/secrets` instead.
 
 ## Ports
 
-- `1935`: RTMP (OBS)
+- `1935`: RTMP publishing and direct playback, without authentication
 - `8080`: web pages, HLS, dashboard, `/api` and `/ws`, all behind the login
 
 The API server listens on `127.0.0.1:8000` inside the container only. The
 dashboard reaches it through nginx on `8080`, so it is protected by the same
 login.
 
-> Plain HTTP/RTMP sends passwords unencrypted. Acceptable on a trusted network
-> only. Add HTTPS/RTMPS before exposing this to the internet.
+Direct playback at `rtmp://<host-ip>:1935/live/<name>` does not use the browser
+login. Anyone who can reach port `1935` can publish or watch via RTMP.
+
+> Plain HTTP sends viewer passwords unencrypted. Use this setup on a trusted
+> network. Add HTTPS for browser access and restrict RTMP access before exposing
+> the service to the internet.

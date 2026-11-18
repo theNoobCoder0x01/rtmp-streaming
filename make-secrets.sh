@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Creates secrets/ with a random OBS stream key and a hashed viewer password.
+# Creates secrets/ with a hashed viewer password.
 # Usage: ./make-secrets.sh <viewer-username>
 set -eu
 user="${1:-viewer}"
@@ -14,9 +14,6 @@ if echo x | openssl passwd -6 -stdin >/dev/null 2>&1; then algo=-6; else algo=-a
 hash="$(printf '%s\n' "$pass" | openssl passwd "$algo" -stdin)"
 printf '%s:%s\n' "$user" "$hash" > secrets/.htpasswd
 
-key="$(openssl rand -hex 24)"
-printf 'map $arg_pwd $publish_ok { default 0; "%s" 1; }\n' "$key" > secrets/publish_key.conf
-chmod 600 secrets/publish_key.conf
 chmod 644 secrets/.htpasswd   # nginx worker (non-root) must read it; it only holds a hash
 
-echo "Done. In OBS set the stream key to:  test?pwd=$key"
+echo "Done. Mount secrets/ at /etc/nginx/secrets to use the viewer login."
