@@ -8,4 +8,11 @@ services:
       - "8080:8080"
     env_file:
       - stream.env   # passwords; copy stream.env.example and fill it in
+    environment:
+      MONITOR_DB_PATH: /var/lib/stream-monitor/monitoring.sqlite3
+    volumes:
+      - monitoring_data:/var/lib/stream-monitor
     restart: unless-stopped
+
+volumes:
+  monitoring_data:

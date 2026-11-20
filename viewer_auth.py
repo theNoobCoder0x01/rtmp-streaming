@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 import secrets
+import ipaddress
 import time
 from typing import Dict, Optional
 from urllib.parse import parse_qs, quote, urlsplit
@@ -24,6 +25,7 @@ class ViewerSession:
     target: str
     expires_at: float
     page_loaded: bool = False
+    username: str = ""
 
 
 class ViewerAuth:
@@ -33,6 +35,8 @@ class ViewerAuth:
         self.password_file = str(password_file)
         self.lifetime = lifetime
         self.sessions: Dict[str, ViewerSession] = {}
+        self.on_session_end = None
+        self.on_hls_request = None
 
     def _session(self, token: Optional[str]) -> Optional[ViewerSession]:
         session = self.sessions.get(token)
@@ -46,7 +50,9 @@ class ViewerAuth:
         return bool(session and session.page_loaded)
 
     def revoke(self, token: Optional[str]):
-        self.sessions.pop(token, None)
+        session = self.sessions.pop(token, None)
+        if session and self.on_session_end:
+            self.on_session_end(token)
 
     def _target(self, value: str) -> str:
         # Redirect only to an existing viewer page on this server.
@@ -81,7 +87,15 @@ class ViewerAuth:
             return False
 
     async def protect(self, request: Request, call_next):
-        if request.url.path == "/auth/login" and request.method == "POST":
+        if request.url.path.startswith("/internal/"):
+            try:
+                local = request.client is not None and ipaddress.ip_address(request.client.host).is_loopback
+            except ValueError:
+                local = False
+            if not local or request.headers.get("x-internal-rtmp") != "1":
+                return Response(status_code=404)
+            response = await call_next(request)
+        elif request.url.path == "/auth/login" and request.method == "POST":
             response = await call_next(request)
         else:
             token = request.cookies.get(COOKIE_NAME)
@@ -131,13 +145,13 @@ class ViewerAuth:
             if session.expires_at <= now:
                 self.revoke(token)
         token = secrets.token_urlsafe(32)
-        self.sessions[token] = ViewerSession(target, now + self.lifetime)
+        self.sessions[token] = ViewerSession(target, now + self.lifetime, username=username)
         response = RedirectResponse(target, status_code=303)
         response.set_cookie(COOKIE_NAME, token, httponly=True, samesite="strict",
                             secure=request.url.scheme == "https")
         return response
 
-    async def serve_file(self, file_path: str):
+    async def serve_file(self, request: Request, file_path: str):
         if file_path == "stat":
             return Response(headers={"X-Accel-Redirect": "/_stream_stats"})
         parts = file_path.split("/")
@@ -146,10 +160,14 @@ class ViewerAuth:
         if parts[0] in {"hls", "hls1", "hls2", "hls3", "hls4", "hls5"}:
             if len(parts) < 2 or Path(file_path).suffix not in (".m3u8", ".ts"):
                 return Response(status_code=404)
+            if self.on_hls_request:
+                session = self._session(request.cookies.get(COOKIE_NAME))
+                if session and session.page_loaded:
+                    await self.on_hls_request(request, file_path, session)
             return Response(headers={"X-Accel-Redirect": "/_stream_hls/" + quote(file_path, safe="/")})
         path = (self.html_root / (file_path or "index.html")).resolve()
         try:
-            relative = path.relative_to(self.html_root)
+            relative = path.relative_to(self.html_root.resolve())
         except ValueError:
             return Response(status_code=404)
         if not path.is_file() or path.name == "login.html":

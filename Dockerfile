@@ -26,6 +26,8 @@ COPY public/ /usr/local/nginx/html/public/
 # COPY player.html /usr/local/nginx/html/
 COPY server.py /usr/local/
 COPY viewer_auth.py /usr/local/
+COPY monitoring/ /usr/local/monitoring/
+RUN mkdir -p /var/lib/stream-monitor
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 

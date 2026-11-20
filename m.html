@@ -1,289 +1,95 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Stream Monitor</title>
-    <style>
-      body {
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        margin: 0;
-        padding: 20px;
-        background-color: #f0f2f5;
-        color: #333;
-      }
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stream Desk · LAN monitoring</title>
+  <link rel="stylesheet" href="/public/monitor.css">
+  <script src="/public/monitor.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#live"><span class="brand-mark">S</span><span>Stream Desk<small>LAN MONITORING</small></span></a>
+    <div class="nav-label">WORKSPACE</div>
+    <nav aria-label="Monitoring views">
+      <a href="#live" data-view="live"><span aria-hidden="true">◉</span> Live overview</a>
+      <a href="#logs" data-view="logs"><span aria-hidden="true">≡</span> Connection log</a>
+      <a href="#reports" data-view="reports"><span aria-hidden="true">▥</span> Reports</a>
+    </nav>
+    <a class="player-link" href="/player.html">Open video player <span aria-hidden="true">↗</span></a>
+    <div class="sidebar-footer"><span class="dot"></span> Local network<span class="subtle">Device identity is based on LAN IP.</span></div>
+  </aside>
+  <main>
+    <header class="page-header">
+      <div><div class="eyebrow">STREAMING OPERATIONS</div><h1 id="pageTitle">Live overview</h1><p id="pageDescription">A current view of broadcasters, viewers and connection activity.</p></div>
+      <div class="header-actions"><span id="freshness" class="subtle" aria-live="polite">Waiting for data</span><button id="refresh" class="button secondary" type="button">↻ Refresh</button></div>
+    </header>
+    <div id="pageError" class="notice danger" role="alert" hidden></div>
+    <div id="healthNotice" class="notice" role="status" hidden></div>
 
-      .container {
-        max-width: 1200px;
-        margin: 0 auto;
-      }
-
-      .header {
-        background-color: #ffffff;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        margin-bottom: 20px;
-      }
-
-      h1 {
-        color: #1a73e8;
-        margin: 0;
-      }
-
-      .stats-container {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        gap: 20px;
-        margin-bottom: 20px;
-      }
-
-      .stat-card {
-        background-color: #ffffff;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      }
-
-      .stat-title {
-        font-size: 1.1em;
-        font-weight: 600;
-        color: #5f6368;
-        margin-bottom: 10px;
-      }
-
-      .stat-value {
-        font-size: 2em;
-        font-weight: bold;
-        color: #1a73e8;
-      }
-
-      .streams-list {
-        background-color: #ffffff;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      }
-
-      .stream-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 15px;
-        border-bottom: 1px solid #e0e0e0;
-      }
-
-      .stream-item:last-child {
-        border-bottom: none;
-      }
-
-      .status-indicator {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        display: inline-block;
-        margin-right: 10px;
-      }
-
-      .status-active {
-        background-color: #34a853;
-      }
-
-      .status-inactive {
-        background-color: #ea4335;
-      }
-
-      .refresh-button {
-        background-color: #1a73e8;
-        color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 1em;
-        transition: background-color 0.3s;
-      }
-
-      .refresh-button:hover {
-        background-color: #1557b0;
-      }
-
-      @media (max-width: 768px) {
-        .stats-container {
-          grid-template-columns: 1fr;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <h1>Stream Monitor</h1>
+    <section data-section="live" aria-label="Live overview">
+      <div class="metrics">
+        <article class="metric"><span>Broadcasters</span><strong id="publishers">—</strong><small>Active RTMP publishing sessions</small></article>
+        <article class="metric"><span>Viewers</span><strong id="viewers">—</strong><small id="viewerBreakdown">Browser and direct RTMP sessions</small></article>
+        <article class="metric"><span>LAN devices</span><strong id="uniqueIps">—</strong><small>Distinct IPs currently connected</small></article>
+        <article class="metric"><span>RTMP outbound</span><strong><span id="outbound">—</span><em>Mbps</em></strong><small>HLS HTTP traffic is not included</small></article>
       </div>
+      <article class="panel">
+        <div class="panel-header"><div><h2>RTMP traffic</h2><p>Observed bandwidth over the last 24 hours</p></div><span id="healthBadge" class="badge neutral">Starting</span></div>
+        <div class="chart-legend"><span><i class="inbound"></i>Inbound</span><span><i class="outbound"></i>Outbound</span></div>
+        <div id="trafficChart" class="chart"><div class="empty">Loading history…</div></div>
+      </article>
+      <article class="panel">
+        <div class="panel-header"><div><h2>Live streams</h2><p>Publishers, quality and RTMP bandwidth</p></div><span id="streamCount" class="subtle"></span></div>
+        <div class="table-scroll"><table><thead><tr><th>Stream</th><th>Quality</th><th>Broadcasters</th><th>RTMP viewers</th><th>Inbound</th><th>Outbound</th></tr></thead><tbody id="streamsBody"><tr><td colspan="6" class="empty">Loading streams…</td></tr></tbody></table></div>
+      </article>
+      <article class="panel">
+        <div class="panel-header"><div><h2>Connected devices</h2><p id="connectionCount">Current publishing and viewing sessions</p></div><a href="#logs">Full history →</a></div>
+        <div class="table-scroll"><table><thead><tr><th>Role</th><th>LAN IP</th><th>Stream</th><th>Account</th><th>Connected</th><th>Duration</th></tr></thead><tbody id="connectionsBody"><tr><td colspan="6" class="empty">Loading connections…</td></tr></tbody></table></div>
+        <div class="panel-foot">Browser viewers end after 30 seconds without media requests. Their disconnect time is estimated from the last observed request.</div>
+      </article>
+      <article class="panel">
+        <div class="panel-header"><div><h2>Recent activity</h2><p>Connect and disconnect observations</p></div><a href="#logs">Connection log →</a></div>
+        <div class="table-scroll"><table><thead><tr><th>Event</th><th>Role</th><th>LAN IP</th><th>Stream</th><th>Time</th><th>Reason</th></tr></thead><tbody id="recentBody"><tr><td colspan="6" class="empty">Loading activity…</td></tr></tbody></table></div>
+      </article>
+    </section>
 
-      <div class="stats-container">
-        <div class="stat-card">
-          <div class="stat-title">Active Streams</div>
-          <div class="stat-value" id="activeStreams">0</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-title">Total Bandwidth</div>
-          <div class="stat-value" id="totalBandwidth">0 Mbps</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-title">Peak Connections</div>
-          <div class="stat-value" id="peakConnections">0</div>
-        </div>
+    <section id="filterArea" hidden>
+      <form id="filters" class="panel filter-panel">
+        <div class="field"><label for="from">From date</label><input type="date" id="from" name="from" required></div>
+        <div class="field"><label for="to">Through date</label><input type="date" id="to" name="to" required></div>
+        <div class="field"><label for="role">Role</label><select id="role" name="role"><option value="">All roles</option><option value="publisher">Broadcaster</option><option value="rtmp_viewer">RTMP viewer</option><option value="hls_viewer">Browser viewer</option></select></div>
+        <div class="field"><label for="stream">Stream name</label><input id="stream" name="stream" placeholder="All streams" maxlength="512"></div>
+        <div class="field"><label for="ip">LAN IP</label><input id="ip" name="ip" placeholder="All IPs" maxlength="64"></div>
+        <div class="field" id="statusField"><label for="status">Status</label><select id="status" name="status"><option value="">Any status</option><option value="active">Active</option><option value="ended">Ended</option></select></div>
+        <button class="button" type="submit">Apply filters</button><button id="resetFilters" class="button quiet" type="button">Reset</button>
+        <div class="filter-note" id="timeZone"></div>
+      </form>
+    </section>
+
+    <section data-section="logs" aria-label="Connection history" hidden>
+      <article class="panel">
+        <div class="panel-header"><div class="segmented" aria-label="Log type"><button type="button" data-mode="sessions" aria-pressed="true">Sessions</button><button type="button" data-mode="events" aria-pressed="false">Events</button></div><button class="button secondary export" type="button">↓ Export sessions CSV</button></div>
+        <div class="table-scroll"><table><thead id="logHead"></thead><tbody id="logBody"></tbody></table></div>
+        <div class="pagination"><span id="pageCount" class="subtle"></span><div><button id="previous" class="button quiet" type="button">← Previous</button><button id="next" class="button quiet" type="button">Next →</button></div></div>
+      </article>
+    </section>
+
+    <section data-section="reports" aria-label="Connection reports" hidden>
+      <div class="report-heading"><p id="reportRange" class="subtle">Apply a date range to explore connection activity.</p><button class="button secondary export" type="button">↓ Export sessions CSV</button></div>
+      <div class="metrics report-metrics">
+        <article class="metric"><span>Sessions in range</span><strong id="reportSessions">—</strong><small>Includes sessions overlapping the range</small></article>
+        <article class="metric"><span>Distinct LAN IPs</span><strong id="reportIps">—</strong><small>Devices observed in this range</small></article>
+        <article class="metric"><span>Connection time</span><strong id="reportDuration">—</strong><small>Combined time within the selected range</small></article>
+        <article class="metric"><span>Peak concurrent</span><strong id="reportPeak">—</strong><small>Calculated from session intervals</small></article>
       </div>
-
-      <div class="streams-list">
-        <h2>Active Connections</h2>
-        <div id="streamsList"></div>
+      <article class="panel"><div class="panel-header"><div><h2>Activity by role</h2><p id="reportEvents">Connects and disconnects occurring in the selected range</p></div></div><div id="roleBreakdown" class="role-breakdown"></div></article>
+      <div class="report-grid">
+        <article class="panel"><div class="panel-header"><div><h2>By stream</h2><p>Top 100 by session count</p></div></div><div class="table-scroll"><table><thead><tr><th>Stream</th><th>Sessions</th><th>IPs</th><th>Connection time</th></tr></thead><tbody id="streamReportBody"></tbody></table></div></article>
+        <article class="panel"><div class="panel-header"><div><h2>By LAN IP</h2><p>Top 100 by session count</p></div></div><div class="table-scroll"><table><thead><tr><th>LAN IP</th><th>Sessions</th><th>Connection time</th></tr></thead><tbody id="ipReportBody"></tbody></table></div></article>
       </div>
-
-      <button class="refresh-button" onclick="refreshData()">
-        Refresh Data
-      </button>
-    </div>
-
-    <script>
-      class StreamMonitor {
-        constructor() {
-          this.streams = [];
-          this.peakConnections = 0;
-          this.wsConnection = null;
-          this.baseUrl = window.location.hostname;
-          this.initializeWebSocket();
-        }
-
-        initializeWebSocket() {
-          this.wsConnection = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
-
-          this.wsConnection.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            this.handleStreamUpdate(data);
-          };
-
-          this.wsConnection.onclose = () => {
-            console.log(
-              "WebSocket connection closed. Attempting to reconnect..."
-            );
-            setTimeout(() => this.initializeWebSocket(), 5000);
-          };
-
-          this.wsConnection.onerror = (error) => {
-            console.error("WebSocket error:", error);
-          };
-        }
-
-        async fetchCurrentStreams() {
-          try {
-            const response = await fetch(`/api/streams`);
-            const data = await response.json();
-            this.streams = data.streams;
-            this.updateUI();
-          } catch (error) {
-            console.error("Error fetching streams:", error);
-          }
-        }
-
-        handleStreamUpdate(data) {
-          switch (data.type) {
-            case "status_update":
-              this.streams = data.streams;
-              break;
-            case "new_stream":
-              const existingStream = this.streams.find(
-                (s) => s.id === data.stream.id
-              );
-              if (!existingStream) {
-                this.streams.push(data.stream);
-              }
-              break;
-            case "stream_ended":
-              this.streams = this.streams.filter((s) => s.id !== data.streamId);
-              break;
-          }
-          this.updateUI();
-        }
-
-        calculateStreamStats() {
-          const activeStreams = this.streams.filter((s) => s.status === "active");
-          const totalBandwidthIn = activeStreams.reduce((sum, stream) => sum + stream.bandwidth_in, 0);
-          const totalBandwidthOut = activeStreams.reduce((sum, stream) => sum + stream.bandwidth_out, 0);
-          const totalBytesIn = activeStreams.reduce((sum, stream) => sum + stream.bytes_in, 0);
-          const totalBytesOut = activeStreams.reduce((sum, stream) => sum + stream.bytes_out, 0);
-
-          this.peakConnections = Math.max(
-            this.peakConnections,
-            activeStreams.length
-          );
-
-          return {
-            activeCount: activeStreams.length,
-            totalBandwidthIn,
-            totalBandwidthOut,
-            totalBytesIn,
-            totalBytesOut,
-            peakConnections: this.peakConnections,
-          };
-        }
-
-        updateUI() {
-          const stats = this.calculateStreamStats();
-
-          document.getElementById("activeStreams").textContent = stats.activeCount;
-          document.getElementById("totalBandwidth").innerHTML = 
-            `In: ${stats.totalBandwidthIn.toFixed(1)} Mbps (${stats.totalBytesIn.toFixed(1)} MB)<br>
-             Out: ${stats.totalBandwidthOut.toFixed(1)} Mbps (${stats.totalBytesOut.toFixed(1)} MB)`;
-          document.getElementById("peakConnections").textContent = stats.peakConnections;
-
-          // Update the stream items display to include bytes transferred
-          const streamsListElement = document.getElementById("streamsList");
-          streamsListElement.innerHTML = "";
-
-          this.streams.forEach((stream) => {
-            const streamElement = document.createElement("div");
-            streamElement.className = "stream-item";
-            const duration = Math.floor((Date.now() - stream.start_time * 1000) / 1000);
-
-            streamElement.innerHTML = `
-              <div>
-                <span class="status-indicator status-${stream.status}"></span>
-                ${stream.name} (Port: ${stream.port})
-              </div>
-              <div>
-                <span>${stream.bandwidth_in.toFixed(1)} Mbps (${stream.bytes_in.toFixed(1)} MB)</span>
-                <span style="margin: 0 10px;">|</span>
-                <span>${this.formatDuration(duration)}</span>
-                <span style="margin: 0 10px;">|</span>
-                <span>${stream.quality}</span>
-              </div>
-            `;
-            streamsListElement.appendChild(streamElement);
-          });
-        }
-
-        formatDuration(seconds) {
-          const hours = Math.floor(seconds / 3600);
-          const minutes = Math.floor((seconds % 3600) / 60);
-          const secs = Math.floor(seconds % 60);
-          return `${hours}:${minutes.toString().padStart(2, "0")}:${secs
-            .toString()
-            .padStart(2, "0")}`;
-        }
-      }
-
-      // Initialize the monitor
-      const monitor = new StreamMonitor();
-
-      // Function to manually refresh data
-      async function refreshData() {
-        await monitor.fetchCurrentStreams();
-      }
-
-      // Initial data fetch
-      refreshData();
-    </script>
-  </body>
+      <p class="footnote">Connection time is summed across sessions, so it can exceed the length of the date range. Browser inactivity and recovered events are explicitly labelled in the event log. CSV contains full session durations; report totals are clipped to the selected dates.</p>
+    </section>
+  </main>
+</body>
 </html>
