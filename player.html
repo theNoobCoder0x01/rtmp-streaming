@@ -78,60 +78,82 @@
     <script src="/public/videojs-contrib-hls.min.js"></script>
 
     <script>
-        const hostname = window.location.hostname;
         let player;
         let activeStreams = [];
         let ws;
+        let selectedStreamId = null; // null means no initial selection yet.
+        let playingStreamUrl = '';
 
         // Initialize Video.js player
         function initializePlayer() {
             player = videojs('my-video');
         }
 
-        // Update stream selection dropdown
+        // Reuse options so status/refresh messages do not rebuild the dropdown.
         function updateStreamList(streams) {
+            activeStreams = streams.filter(stream => stream.status === 'active');
             const select = document.getElementById('streamSelect');
-            const currentValue = select.value;
-            
-            // Clear existing options except the first one
-            while (select.options.length > 1) {
-                select.remove(1);
+            const streamIds = new Set(activeStreams.map(stream => stream.id));
+            const optionsById = new Map(Array.from(select.options, option => [option.value, option]));
+
+            // Keep the placeholder and remove only streams that went offline.
+            for (let index = select.options.length - 1; index > 0; index--) {
+                if (!streamIds.has(select.options[index].value)) {
+                    select.remove(index);
+                }
             }
 
-            // Add new options
-            streams.forEach(stream => {
-                if (stream.status === 'active') {
-                    const option = new Option(`Stream ${stream.name} (${stream.quality})`, stream.id);
+            // Existing options keep their order, identity and selection.
+            activeStreams.forEach(stream => {
+                const label = `Stream ${stream.name} (${stream.quality})`;
+                let option = optionsById.get(stream.id);
+                if (!option) {
+                    option = new Option(label, stream.id);
                     select.add(option);
+                    optionsById.set(stream.id, option);
+                } else if (option.text !== label) {
+                    option.text = label;
                 }
             });
 
-            // Try to maintain the current selection
-            if (currentValue) {
-                select.value = currentValue;
+            // Default only once, when the first active stream becomes available.
+            if (selectedStreamId === null && activeStreams.length > 0) {
+                selectedStreamId = activeStreams[0].id;
             }
+            const nextValue = streamIds.has(selectedStreamId) ? selectedStreamId : '';
+            if (select.value !== nextValue) {
+                select.value = nextValue;
+            }
+            renderSelectedStream();
         }
 
-        // Change the active stream
+        // Explicit choices (including the placeholder) override the default.
         function changeStream() {
-            const select = document.getElementById('streamSelect');
-            const streamId = select.value;
-            
-            if (!streamId) {
-                player.src(''); // Clear the player if no stream is selected
-                document.getElementById('streamInfo').innerHTML = '';
-                return;
+            selectedStreamId = document.getElementById('streamSelect').value;
+            renderSelectedStream();
+        }
+
+        function renderSelectedStream() {
+            const stream = activeStreams.find(stream => stream.id === selectedStreamId);
+            const nextUrl = stream ? `/hls/${stream.name}.m3u8` : '';
+
+            // Metadata updates must not restart the current video.
+            if (playingStreamUrl !== nextUrl) {
+                playingStreamUrl = nextUrl;
+                if (stream) {
+                    player.src({ src: nextUrl, type: 'application/x-mpegURL' });
+                    const playback = player.play();
+                    // Browsers may require a click before playing with sound.
+                    if (playback && typeof playback.catch === 'function') {
+                        playback.catch(() => {});
+                    }
+                } else {
+                    player.pause();
+                    player.reset();
+                }
             }
 
-            const stream = activeStreams.find(s => s.id === streamId);
             if (stream) {
-                player.src({
-                    src: `/hls/${stream.name}.m3u8`,
-                    type: 'application/x-mpegURL'
-                });
-                player.play();
-
-                // Update stream info
                 document.getElementById('streamInfo').innerHTML = `
                     <h3>Stream Information</h3>
                     <p>Name: ${stream.name}</p>
@@ -139,6 +161,8 @@
                     <p>Bandwidth In: ${stream.bandwidth_in.toFixed(2)} Mbps</p>
                     <p>Bandwidth Out: ${stream.bandwidth_out.toFixed(2)} Mbps</p>
                 `;
+            } else {
+                document.getElementById('streamInfo').innerHTML = '';
             }
         }
 
@@ -149,7 +173,6 @@
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 if (data.type === 'status_update') {
-                    activeStreams = data.streams;
                     updateStreamList(data.streams);
                 }
             };
@@ -175,4 +198,4 @@
         });
     </script>
 </body>
-</html> 
+</html>
